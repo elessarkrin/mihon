@@ -460,7 +460,11 @@ object SettingsDataScreen : SearchableSettings {
                     } else {
                         stringResource(MR.strings.drive_connect_account)
                     },
-                    subtitle = if (accountName == null) stringResource(MR.strings.drive_connect_account_subtitle) else null,
+                    subtitle = if (accountName == null) {
+                        stringResource(MR.strings.drive_connect_account_subtitle)
+                    } else {
+                        null
+                    },
                     onClick = {
                         try {
                             val credential = GoogleAccountCredential.usingOAuth2(
