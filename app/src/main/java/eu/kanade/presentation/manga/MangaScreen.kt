@@ -125,6 +125,8 @@ fun MangaScreen(
     onChapterSelected: (ChapterList.Item, Boolean, Boolean) -> Unit,
     onAllChapterSelected: (Boolean) -> Unit,
     onInvertSelection: () -> Unit,
+    driveUploadEnabled: Boolean = false,
+    onDriveUploadClicked: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val onCopyTagToClipboard: (tag: String) -> Unit = {
@@ -168,6 +170,8 @@ fun MangaScreen(
             onChapterSelected = onChapterSelected,
             onAllChapterSelected = onAllChapterSelected,
             onInvertSelection = onInvertSelection,
+            driveUploadEnabled = driveUploadEnabled,
+            onDriveUploadClicked = onDriveUploadClicked,
         )
     } else {
         MangaScreenLargeImpl(
@@ -204,6 +208,8 @@ fun MangaScreen(
             onChapterSelected = onChapterSelected,
             onAllChapterSelected = onAllChapterSelected,
             onInvertSelection = onInvertSelection,
+            driveUploadEnabled = driveUploadEnabled,
+            onDriveUploadClicked = onDriveUploadClicked,
         )
     }
 }
@@ -256,6 +262,8 @@ private fun MangaScreenSmallImpl(
     onChapterSelected: (ChapterList.Item, Boolean, Boolean) -> Unit,
     onAllChapterSelected: (Boolean) -> Unit,
     onInvertSelection: () -> Unit,
+    driveUploadEnabled: Boolean = false,
+    onDriveUploadClicked: (() -> Unit)? = null,
 ) {
     val chapterListState = rememberLazyListState()
 
@@ -400,6 +408,8 @@ private fun MangaScreenSmallImpl(
                             onTrackingClicked = onTrackingClicked,
                             onEditIntervalClicked = onEditIntervalClicked,
                             onEditCategory = onEditCategoryClicked,
+                            driveUploadEnabled = driveUploadEnabled,
+                            onDriveUploadClicked = onDriveUploadClicked,
                         )
                     }
 
@@ -498,6 +508,8 @@ fun MangaScreenLargeImpl(
     onChapterSelected: (ChapterList.Item, Boolean, Boolean) -> Unit,
     onAllChapterSelected: (Boolean) -> Unit,
     onInvertSelection: () -> Unit,
+    driveUploadEnabled: Boolean = false,
+    onDriveUploadClicked: (() -> Unit)? = null,
 ) {
     val layoutDirection = LocalLayoutDirection.current
     val density = LocalDensity.current
@@ -630,6 +642,8 @@ fun MangaScreenLargeImpl(
                             onTrackingClicked = onTrackingClicked,
                             onEditIntervalClicked = onEditIntervalClicked,
                             onEditCategory = onEditCategoryClicked,
+                            driveUploadEnabled = driveUploadEnabled,
+                            onDriveUploadClicked = onDriveUploadClicked,
                         )
                         ExpandableMangaDescription(
                             defaultExpandState = true,

@@ -6,6 +6,8 @@ import eu.kanade.domain.chapter.model.toSChapter
 import eu.kanade.domain.manga.model.getComicInfo
 import eu.kanade.tachiyomi.data.cache.ChapterCache
 import eu.kanade.tachiyomi.data.download.model.Download
+import eu.kanade.tachiyomi.data.gdrive.GoogleDrivePreferences
+import eu.kanade.tachiyomi.data.gdrive.GoogleDriveUploader
 import eu.kanade.tachiyomi.data.library.LibraryUpdateNotifier
 import eu.kanade.tachiyomi.data.notification.NotificationHandler
 import eu.kanade.tachiyomi.source.UnmeteredSource
@@ -243,6 +245,7 @@ class Downloader(
             // Remove successful download from queue
             if (download.status == Download.State.DOWNLOADED) {
                 removeFromQueue(download)
+                triggerDriveUpload(download)
             }
             if (areAllDownloadsFinished()) {
                 stop()
@@ -261,6 +264,24 @@ class Downloader(
     private fun cancelDownloaderJob() {
         downloaderJob?.cancel()
         downloaderJob = null
+    }
+
+    private suspend fun triggerDriveUpload(download: Download) {
+        val drivePrefs = GoogleDrivePreferences(context)
+        if (!drivePrefs.isAccountConfigured()) return
+        if (!drivePrefs.isDriveEnabledForManga(download.manga.id)) return
+        val chapterFile = provider.findChapterDir(
+            download.chapter.name,
+            download.chapter.scanlator,
+            download.chapter.url,
+            download.manga.title,
+            download.source,
+        ) ?: return
+        GoogleDriveUploader(context).upload(
+            file = chapterFile,
+            mangaTitle = download.manga.title,
+            chapterNumber = download.chapter.chapterNumber,
+        )
     }
 
     /**

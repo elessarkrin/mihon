@@ -36,6 +36,8 @@ import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Done
 import androidx.compose.material.icons.outlined.DoneAll
+import androidx.compose.material.icons.outlined.CloudDone
+import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.Public
@@ -182,6 +184,8 @@ fun MangaActionRow(
     onTrackingClicked: () -> Unit,
     onEditIntervalClicked: (() -> Unit)?,
     onEditCategory: (() -> Unit)?,
+    driveUploadEnabled: Boolean = false,
+    onDriveUploadClicked: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val defaultActionButtonColor = MaterialTheme.colorScheme.onSurface.copy(alpha = DISABLED_ALPHA)
@@ -239,6 +243,16 @@ fun MangaActionRow(
                 color = defaultActionButtonColor,
                 onClick = onWebViewClicked,
                 onLongClick = onWebViewLongClicked,
+            )
+        }
+        if (onDriveUploadClicked != null) {
+            MangaActionButton(
+                title = stringResource(
+                    if (driveUploadEnabled) MR.strings.action_drive_upload_on else MR.strings.action_drive_upload_off,
+                ),
+                icon = if (driveUploadEnabled) Icons.Outlined.CloudDone else Icons.Outlined.CloudUpload,
+                color = if (driveUploadEnabled) MaterialTheme.colorScheme.primary else defaultActionButtonColor,
+                onClick = onDriveUploadClicked,
             )
         }
     }
