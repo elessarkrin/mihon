@@ -20,7 +20,7 @@ class GoogleDriveUploader(private val context: Context) {
     private fun buildService(accountName: String): Drive {
         val credential = GoogleAccountCredential
             .usingOAuth2(context, listOf(DriveScopes.DRIVE_FILE))
-            .apply { selectedAccountName = accountName }
+            .setSelectedAccountName(accountName)
         return Drive.Builder(
             NetHttpTransport(),
             GsonFactory.getDefaultInstance(),
