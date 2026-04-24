@@ -1,5 +1,7 @@
 package eu.kanade.presentation.more.settings.screen
 
+import android.accounts.AccountManager
+import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -7,6 +9,9 @@ import android.net.Uri
 import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
+import com.google.api.services.drive.DriveScopes
+import eu.kanade.tachiyomi.data.gdrive.GoogleDrivePreferences
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
@@ -110,6 +115,7 @@ object SettingsDataScreen : SearchableSettings {
             getBackupAndRestoreGroup(backupPreferences = backupPreferences),
             getDataGroup(),
             getExportGroup(),
+            getGoogleDriveGroup(),
         )
     }
 
@@ -386,6 +392,101 @@ object SettingsDataScreen : SearchableSettings {
                 Preference.PreferenceItem.TextPreference(
                     title = stringResource(MR.strings.library_list),
                     onClick = { showDialog = true },
+                ),
+            ),
+        )
+    }
+
+    @Composable
+    private fun getGoogleDriveGroup(): Preference.PreferenceGroup {
+        val context = LocalContext.current
+        val drivePrefs = remember { GoogleDrivePreferences(context) }
+        var accountName by remember { mutableStateOf(drivePrefs.getAccountName()) }
+        var rootFolder by remember { mutableStateOf(drivePrefs.getRootFolder()) }
+        var showFolderDialog by remember { mutableStateOf(false) }
+        var folderInput by remember { mutableStateOf(rootFolder) }
+
+        val accountPickerLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.StartActivityForResult(),
+        ) { result ->
+            if (result.resultCode == Activity.RESULT_OK) {
+                val name = result.data?.getStringExtra(AccountManager.KEY_ACCOUNT_NAME)
+                if (name != null) {
+                    drivePrefs.setAccountName(name)
+                    accountName = name
+                }
+            }
+        }
+
+        if (showFolderDialog) {
+            AlertDialog(
+                onDismissRequest = { showFolderDialog = false },
+                title = { Text(text = stringResource(MR.strings.drive_folder_title)) },
+                text = {
+                    androidx.compose.material3.OutlinedTextField(
+                        value = folderInput,
+                        onValueChange = { folderInput = it },
+                        singleLine = true,
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            drivePrefs.setRootFolder(folderInput)
+                            rootFolder = drivePrefs.getRootFolder()
+                            showFolderDialog = false
+                        },
+                    ) {
+                        Text(text = stringResource(MR.strings.action_save))
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = { showFolderDialog = false },
+                    ) {
+                        Text(text = stringResource(MR.strings.action_cancel))
+                    }
+                },
+            )
+        }
+
+        return Preference.PreferenceGroup(
+            title = stringResource(MR.strings.drive_group_title),
+            preferenceItems = persistentListOf(
+                Preference.PreferenceItem.TextPreference(
+                    title = if (accountName != null) {
+                        stringResource(MR.strings.drive_account_connected, accountName!!)
+                    } else {
+                        stringResource(MR.strings.drive_connect_account)
+                    },
+                    subtitle = if (accountName == null) stringResource(MR.strings.drive_connect_account_subtitle) else null,
+                    onClick = {
+                        try {
+                            val credential = GoogleAccountCredential.usingOAuth2(
+                                context,
+                                listOf(DriveScopes.DRIVE_FILE),
+                            )
+                            accountPickerLauncher.launch(credential.newChooseAccountIntent())
+                        } catch (e: Exception) {
+                            context.toast(e.message ?: "Error opening account picker")
+                        }
+                    },
+                ),
+                Preference.PreferenceItem.TextPreference(
+                    title = stringResource(MR.strings.drive_folder_title),
+                    subtitle = rootFolder,
+                    onClick = {
+                        folderInput = rootFolder
+                        showFolderDialog = true
+                    },
+                ),
+                Preference.PreferenceItem.TextPreference(
+                    title = stringResource(MR.strings.drive_disconnect),
+                    enabled = accountName != null,
+                    onClick = {
+                        drivePrefs.clearAccount()
+                        accountName = null
+                    },
                 ),
             ),
         )

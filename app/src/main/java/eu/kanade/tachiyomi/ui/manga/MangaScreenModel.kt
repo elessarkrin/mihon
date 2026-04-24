@@ -34,6 +34,7 @@ import eu.kanade.presentation.util.formattedMessage
 import eu.kanade.tachiyomi.data.download.DownloadCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.download.model.Download
+import eu.kanade.tachiyomi.data.gdrive.GoogleDrivePreferences
 import eu.kanade.tachiyomi.data.track.EnhancedTracker
 import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.network.HttpException
@@ -46,6 +47,9 @@ import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
@@ -149,6 +153,25 @@ class MangaScreenModel(
 
     val isUpdateIntervalEnabled =
         LibraryPreferences.MANGA_OUTSIDE_RELEASE_PERIOD in libraryPreferences.autoUpdateMangaRestrictions.get()
+
+    private val drivePrefs = GoogleDrivePreferences(context)
+
+    private val _driveUploadEnabled = MutableStateFlow(drivePrefs.isDriveEnabledForManga(mangaId))
+    val driveUploadEnabled: StateFlow<Boolean> = _driveUploadEnabled.asStateFlow()
+
+    fun toggleDriveUpload() {
+        if (!_driveUploadEnabled.value && !drivePrefs.isAccountConfigured()) {
+            screenModelScope.launch {
+                snackbarHostState.showSnackbar(
+                    context.stringResource(MR.strings.drive_account_not_configured),
+                )
+            }
+            return
+        }
+        val new = !_driveUploadEnabled.value
+        drivePrefs.setDriveEnabledForManga(mangaId, new)
+        _driveUploadEnabled.value = new
+    }
 
     private val selectedPositions: Array<Int> = arrayOf(-1, -1) // first and last selected index in list
     private val selectedChapterIds: HashSet<Long> = HashSet()

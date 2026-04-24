@@ -26,6 +26,7 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.core.util.ifSourcesLoaded
 import eu.kanade.domain.manga.model.hasCustomCover
 import eu.kanade.domain.manga.model.toSManga
+import eu.kanade.tachiyomi.data.gdrive.GoogleDrivePreferences
 import eu.kanade.presentation.category.components.ChangeCategoryDialog
 import eu.kanade.presentation.components.NavigatorAdaptiveSheet
 import eu.kanade.presentation.manga.ChapterSettingsDialog
@@ -90,6 +91,7 @@ class MangaScreen(
         }
 
         val state by screenModel.state.collectAsStateWithLifecycle()
+        val driveUploadEnabled by screenModel.driveUploadEnabled.collectAsStateWithLifecycle()
 
         if (state is MangaScreenModel.State.Loading) {
             LoadingScreen()
@@ -170,6 +172,8 @@ class MangaScreen(
             onChapterSelected = screenModel::toggleSelection,
             onAllChapterSelected = screenModel::toggleAllSelection,
             onInvertSelection = screenModel::invertSelection,
+            driveUploadEnabled = driveUploadEnabled,
+            onDriveUploadClicked = screenModel::toggleDriveUpload,
         )
 
         var showScanlatorsDialog by remember { mutableStateOf(false) }

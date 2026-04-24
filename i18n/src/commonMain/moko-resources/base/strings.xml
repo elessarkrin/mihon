@@ -1060,4 +1060,15 @@
     <string name="donationCampaign.paragraph3">Regardless, Mihon will continue to be maintained by me and the volunteers, and it will stay open source.</string>
     <string name="donationCampaign.contactPlatform">Discord</string>
     <string name="donationCampaign.dismiss">Dismiss</string>
+
+    <!-- Google Drive integration -->
+    <string name="action_drive_upload_on">Drive: On</string>
+    <string name="action_drive_upload_off">Drive: Off</string>
+    <string name="drive_account_not_configured">Connect a Google account in Settings → Data &amp; Storage first</string>
+    <string name="drive_group_title">Google Drive</string>
+    <string name="drive_connect_account">Connect Google account</string>
+    <string name="drive_connect_account_subtitle">Tap to link a Google account for auto-upload</string>
+    <string name="drive_account_connected">Account: %s</string>
+    <string name="drive_folder_title">Upload folder</string>
+    <string name="drive_disconnect">Disconnect account</string>
 </resources>

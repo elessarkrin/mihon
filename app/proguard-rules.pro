@@ -80,3 +80,10 @@
 # Firebase
 -keep class com.google.firebase.installations.** { *; }
 -keep interface com.google.firebase.installations.** { *; }
+
+# Google Drive SDK
+-keep class com.google.api.services.drive.** { *; }
+-keep class com.google.api.client.** { *; }
+-keep class com.google.android.gms.auth.** { *; }
+-dontwarn com.google.api.client.**
+-dontwarn javax.servlet.**
