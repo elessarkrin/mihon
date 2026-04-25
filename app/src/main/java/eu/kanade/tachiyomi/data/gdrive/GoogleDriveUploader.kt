@@ -7,11 +7,11 @@ import com.google.api.client.http.javanet.NetHttpTransport
 import com.google.api.client.json.gson.GsonFactory
 import com.google.api.services.drive.Drive
 import com.google.api.services.drive.DriveScopes
-import com.google.api.services.drive.model.File as DriveFile
 import com.hippo.unifile.UniFile
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
 import java.io.File
+import com.google.api.services.drive.model.File as DriveFile
 
 class GoogleDriveUploader(private val context: Context) {
 
