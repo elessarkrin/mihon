@@ -11,6 +11,8 @@ import com.hippo.unifile.UniFile
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
 import java.io.File
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import com.google.api.services.drive.model.File as DriveFile
 
 class GoogleDriveUploader(private val context: Context) {
@@ -32,6 +34,7 @@ class GoogleDriveUploader(private val context: Context) {
 
     /**
      * Upload [file] to Drive as `{rootFolder}/{mangaTitle}/{mangaTitle}_{chapterNumber}.cbz`.
+     * Handles both pre-archived CBZ files and raw image directories.
      * Skips silently if the file already exists (idempotent).
      * All exceptions are caught — Drive errors never affect download state.
      */
@@ -67,17 +70,47 @@ class GoogleDriveUploader(private val context: Context) {
                 return
             }
 
-            val metadata = DriveFile().apply {
-                name = driveFileName
-                parents = listOf(mangaFolderId)
+            // Chapters saved without CBZ setting are image directories — zip them on-the-fly.
+            val uploadFile: File
+            val tempCbz: File?
+            if (localFile.isDirectory) {
+                tempCbz = File(context.cacheDir, driveFileName)
+                packDirectoryAsCbz(localFile, tempCbz)
+                uploadFile = tempCbz
+            } else {
+                uploadFile = localFile
+                tempCbz = null
             }
-            service.files()
-                .create(metadata, FileContent("application/x-cbz", localFile))
-                .setFields("id,name")
-                .execute()
-            logcat { "Drive upload success: $driveFileName" }
+
+            try {
+                val metadata = DriveFile().apply {
+                    name = driveFileName
+                    parents = listOf(mangaFolderId)
+                }
+                service.files()
+                    .create(metadata, FileContent("application/x-cbz", uploadFile))
+                    .setFields("id,name")
+                    .execute()
+                logcat { "Drive upload success: $driveFileName" }
+            } finally {
+                tempCbz?.delete()
+            }
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Drive upload failed for $mangaTitle ch.$chapterNumber" }
+        }
+    }
+
+    /** Zips all files inside [sourceDir] into a CBZ archive at [destFile]. */
+    private fun packDirectoryAsCbz(sourceDir: File, destFile: File) {
+        ZipOutputStream(destFile.outputStream().buffered()).use { zos ->
+            sourceDir.listFiles()
+                ?.filter { it.isFile }
+                ?.sortedBy { it.name }
+                ?.forEach { imageFile ->
+                    zos.putNextEntry(ZipEntry(imageFile.name))
+                    imageFile.inputStream().use { it.copyTo(zos) }
+                    zos.closeEntry()
+                }
         }
     }
 
