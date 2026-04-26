@@ -435,7 +435,8 @@ object SettingsDataScreen : SearchableSettings {
                                 "oauth2:${DriveScopes.DRIVE_FILE}",
                             )
                         } catch (e: UserRecoverableAuthException) {
-                            withContext(Dispatchers.Main) { oauthLauncher.launch(e.intent) }
+                            val intent = e.intent ?: return@launch
+                            withContext(Dispatchers.Main) { oauthLauncher.launch(intent) }
                         } catch (_: Exception) {
                             // Network or other transient error — consent will be prompted
                             // on the first actual upload attempt.
