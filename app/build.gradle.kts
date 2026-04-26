@@ -118,6 +118,7 @@ android {
             excludes += setOf(
                 "kotlin-tooling-metadata.json",
                 "LICENSE.txt",
+                "META-INF/INDEX.LIST",
                 "META-INF/**/*.properties",
                 "META-INF/**/LICENSE.txt",
                 "META-INF/*.properties",
