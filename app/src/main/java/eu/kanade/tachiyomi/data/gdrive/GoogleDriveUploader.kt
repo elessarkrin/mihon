@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.data.gdrive
 
 import android.content.Context
 import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
+import com.google.api.client.googleapis.extensions.android.gms.auth.UserRecoverableAuthIOException
 import com.google.api.client.http.FileContent
 import com.google.api.client.http.javanet.NetHttpTransport
 import com.google.api.client.json.gson.GsonFactory
@@ -94,6 +95,11 @@ class GoogleDriveUploader(private val context: Context) {
                 logcat { "Drive upload success: $driveFileName" }
             } finally {
                 tempCbz?.delete()
+            }
+        } catch (e: UserRecoverableAuthIOException) {
+            logcat(LogPriority.WARN) {
+                "Drive upload skipped: OAuth2 authorization required. " +
+                    "Go to Settings → Data & Storage → Google Drive and re-connect the account."
             }
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Drive upload failed for $mangaTitle ch.$chapterNumber" }

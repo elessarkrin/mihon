@@ -1,5 +1,6 @@
 package eu.kanade.presentation.more.settings.screen
 
+import android.accounts.Account
 import android.accounts.AccountManager
 import android.app.Activity
 import android.content.ActivityNotFoundException
@@ -44,6 +45,8 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.core.net.toUri
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import com.google.android.gms.auth.GoogleAuthUtil
+import com.google.android.gms.auth.UserRecoverableAuthException
 import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
 import com.google.api.services.drive.DriveScopes
 import com.hippo.unifile.UniFile
@@ -66,6 +69,7 @@ import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import logcat.LogPriority
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.storage.displayablePath
@@ -401,11 +405,17 @@ object SettingsDataScreen : SearchableSettings {
     @Composable
     private fun getGoogleDriveGroup(): Preference.PreferenceGroup {
         val context = LocalContext.current
+        val coroutineScope = rememberCoroutineScope()
         val drivePrefs = remember { GoogleDrivePreferences(context) }
         var accountName by remember { mutableStateOf(drivePrefs.getAccountName()) }
         var rootFolder by remember { mutableStateOf(drivePrefs.getRootFolder()) }
         var showFolderDialog by remember { mutableStateOf(false) }
         var folderInput by remember { mutableStateOf(rootFolder) }
+
+        // Handles the OAuth2 consent result — outcome managed by Google Play Services internals.
+        val oauthLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.StartActivityForResult(),
+        ) { /* result handled by Google internals */ }
 
         val accountPickerLauncher = rememberLauncherForActivityResult(
             contract = ActivityResultContracts.StartActivityForResult(),
@@ -415,6 +425,22 @@ object SettingsDataScreen : SearchableSettings {
                 if (name != null) {
                     drivePrefs.setAccountName(name)
                     accountName = name
+                    // Proactively trigger Drive scope consent so the user authorizes
+                    // the app now rather than silently failing on the first upload.
+                    coroutineScope.launch(Dispatchers.IO) {
+                        try {
+                            GoogleAuthUtil.getToken(
+                                context,
+                                Account(name, "com.google"),
+                                "oauth2:${DriveScopes.DRIVE_FILE}",
+                            )
+                        } catch (e: UserRecoverableAuthException) {
+                            withContext(Dispatchers.Main) { oauthLauncher.launch(e.intent) }
+                        } catch (_: Exception) {
+                            // Network or other transient error — consent will be prompted
+                            // on the first actual upload attempt.
+                        }
+                    }
                 }
             }
         }
