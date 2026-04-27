@@ -6,7 +6,6 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
-    <uses-permission android:name="android.permission.GET_ACCOUNTS" />
 
     <!-- Storage -->
     <uses-permission
@@ -181,6 +180,22 @@
                 <data android:host="bangumi-auth" />
                 <data android:host="myanimelist-auth" />
                 <data android:host="shikimori-auth" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".ui.setting.drive.DriveOAuthCallbackActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.Tachiyomi">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="mihon" />
+                <data android:host="drive-auth" />
             </intent-filter>
         </activity>
 

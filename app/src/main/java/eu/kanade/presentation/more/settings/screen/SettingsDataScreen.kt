@@ -1,8 +1,5 @@
 package eu.kanade.presentation.more.settings.screen
 
-import android.accounts.Account
-import android.accounts.AccountManager
-import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -30,6 +27,7 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.getValue
@@ -41,14 +39,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.core.net.toUri
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
-import com.google.android.gms.auth.GoogleAuthUtil
-import com.google.android.gms.auth.UserRecoverableAuthException
-import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
-import com.google.api.services.drive.DriveScopes
 import com.hippo.unifile.UniFile
 import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.presentation.more.settings.screen.data.CreateBackupScreen
@@ -62,6 +59,7 @@ import eu.kanade.tachiyomi.data.backup.restore.BackupRestoreJob
 import eu.kanade.tachiyomi.data.cache.ChapterCache
 import eu.kanade.tachiyomi.data.export.LibraryExporter
 import eu.kanade.tachiyomi.data.export.LibraryExporter.ExportOptions
+import eu.kanade.tachiyomi.data.gdrive.DriveOAuth
 import eu.kanade.tachiyomi.data.gdrive.GoogleDrivePreferences
 import eu.kanade.tachiyomi.util.system.DeviceUtil
 import eu.kanade.tachiyomi.util.system.toast
@@ -69,7 +67,6 @@ import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import logcat.LogPriority
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.storage.displayablePath
@@ -405,45 +402,24 @@ object SettingsDataScreen : SearchableSettings {
     @Composable
     private fun getGoogleDriveGroup(): Preference.PreferenceGroup {
         val context = LocalContext.current
-        val coroutineScope = rememberCoroutineScope()
+        val lifecycleOwner = LocalLifecycleOwner.current
         val drivePrefs = remember { GoogleDrivePreferences(context) }
-        var accountName by remember { mutableStateOf(drivePrefs.getAccountName()) }
+        var isAuthorized by remember { mutableStateOf(drivePrefs.isAuthorized()) }
         var rootFolder by remember { mutableStateOf(drivePrefs.getRootFolder()) }
         var showFolderDialog by remember { mutableStateOf(false) }
         var folderInput by remember { mutableStateOf(rootFolder) }
+        var showClientIdDialog by remember { mutableStateOf(false) }
+        var clientIdInput by remember { mutableStateOf(drivePrefs.getClientId() ?: "") }
 
-        // Handles the OAuth2 consent result — outcome managed by Google Play Services internals.
-        val oauthLauncher = rememberLauncherForActivityResult(
-            contract = ActivityResultContracts.StartActivityForResult(),
-        ) { /* result handled by Google internals */ }
-
-        val accountPickerLauncher = rememberLauncherForActivityResult(
-            contract = ActivityResultContracts.StartActivityForResult(),
-        ) { result ->
-            if (result.resultCode == Activity.RESULT_OK) {
-                val name = result.data?.getStringExtra(AccountManager.KEY_ACCOUNT_NAME)
-                if (name != null) {
-                    drivePrefs.setAccountName(name)
-                    accountName = name
-                    // Proactively trigger Drive scope consent so the user authorizes
-                    // the app now rather than silently failing on the first upload.
-                    coroutineScope.launch(Dispatchers.IO) {
-                        try {
-                            GoogleAuthUtil.getToken(
-                                context,
-                                Account(name, "com.google"),
-                                "oauth2:${DriveScopes.DRIVE_FILE}",
-                            )
-                        } catch (e: UserRecoverableAuthException) {
-                            val intent = e.intent ?: return@launch
-                            withContext(Dispatchers.Main) { oauthLauncher.launch(intent) }
-                        } catch (_: Exception) {
-                            // Network or other transient error — consent will be prompted
-                            // on the first actual upload attempt.
-                        }
-                    }
+        // Re-check authorization status when returning from the browser OAuth flow.
+        DisposableEffect(lifecycleOwner) {
+            val observer = LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_RESUME) {
+                    isAuthorized = drivePrefs.isAuthorized()
                 }
             }
+            lifecycleOwner.lifecycle.addObserver(observer)
+            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
         }
 
         if (showFolderDialog) {
@@ -469,40 +445,72 @@ object SettingsDataScreen : SearchableSettings {
                     }
                 },
                 dismissButton = {
-                    TextButton(
-                        onClick = { showFolderDialog = false },
-                    ) {
+                    TextButton(onClick = { showFolderDialog = false }) {
                         Text(text = stringResource(MR.strings.action_cancel))
                     }
                 },
             )
         }
 
+        if (showClientIdDialog) {
+            AlertDialog(
+                onDismissRequest = { showClientIdDialog = false },
+                title = { Text(text = stringResource(MR.strings.drive_client_id_title)) },
+                text = {
+                    Column {
+                        Text(
+                            text = stringResource(MR.strings.drive_client_id_subtitle),
+                        )
+                        OutlinedTextField(
+                            value = clientIdInput,
+                            onValueChange = { clientIdInput = it },
+                            singleLine = true,
+                            placeholder = { Text("xxxxxx.apps.googleusercontent.com") },
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            drivePrefs.setClientId(clientIdInput.trim())
+                            showClientIdDialog = false
+                        },
+                    ) {
+                        Text(text = stringResource(MR.strings.action_save))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showClientIdDialog = false }) {
+                        Text(text = stringResource(MR.strings.action_cancel))
+                    }
+                },
+            )
+        }
+
+        val hasClientId = drivePrefs.getClientId()?.isNotBlank() == true
+
         return Preference.PreferenceGroup(
             title = stringResource(MR.strings.drive_group_title),
             preferenceItems = persistentListOf(
                 Preference.PreferenceItem.TextPreference(
-                    title = if (accountName != null) {
-                        stringResource(MR.strings.drive_account_connected, accountName!!)
+                    title = stringResource(MR.strings.drive_client_id_title),
+                    subtitle = drivePrefs.getClientId()?.takeIf { it.isNotBlank() }
+                        ?: stringResource(MR.strings.drive_client_id_subtitle),
+                    onClick = { showClientIdDialog = true },
+                ),
+                Preference.PreferenceItem.TextPreference(
+                    title = if (isAuthorized) {
+                        stringResource(MR.strings.drive_authorized)
                     } else {
-                        stringResource(MR.strings.drive_connect_account)
+                        stringResource(MR.strings.drive_authorize_button)
                     },
-                    subtitle = if (accountName == null) {
-                        stringResource(MR.strings.drive_connect_account_subtitle)
-                    } else {
+                    subtitle = if (isAuthorized) {
                         null
+                    } else {
+                        stringResource(MR.strings.drive_authorize_subtitle)
                     },
-                    onClick = {
-                        try {
-                            val credential = GoogleAccountCredential.usingOAuth2(
-                                context,
-                                listOf(DriveScopes.DRIVE_FILE),
-                            )
-                            accountPickerLauncher.launch(credential.newChooseAccountIntent())
-                        } catch (e: Exception) {
-                            context.toast(e.message ?: "Error opening account picker")
-                        }
-                    },
+                    enabled = hasClientId,
+                    onClick = { DriveOAuth(context).launchAuthFlow() },
                 ),
                 Preference.PreferenceItem.TextPreference(
                     title = stringResource(MR.strings.drive_folder_title),
@@ -514,10 +522,10 @@ object SettingsDataScreen : SearchableSettings {
                 ),
                 Preference.PreferenceItem.TextPreference(
                     title = stringResource(MR.strings.drive_disconnect),
-                    enabled = accountName != null,
+                    enabled = isAuthorized,
                     onClick = {
-                        drivePrefs.clearAccount()
-                        accountName = null
+                        drivePrefs.clearAllTokens()
+                        isAuthorized = false
                     },
                 ),
             ),

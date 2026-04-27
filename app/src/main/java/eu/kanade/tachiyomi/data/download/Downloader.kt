@@ -268,7 +268,7 @@ class Downloader(
 
     private suspend fun triggerDriveUpload(download: Download) {
         val drivePrefs = GoogleDrivePreferences(context)
-        if (!drivePrefs.isAccountConfigured()) return
+        if (!drivePrefs.isAuthorized()) return
         if (!drivePrefs.isDriveEnabledForManga(download.manga.id)) return
         val chapterFile = provider.findChapterDir(
             download.chapter.name,

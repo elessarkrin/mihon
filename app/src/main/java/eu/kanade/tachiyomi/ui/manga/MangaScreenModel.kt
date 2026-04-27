@@ -160,7 +160,7 @@ class MangaScreenModel(
     val driveUploadEnabled: StateFlow<Boolean> = _driveUploadEnabled.asStateFlow()
 
     fun toggleDriveUpload() {
-        if (!_driveUploadEnabled.value && !drivePrefs.isAccountConfigured()) {
+        if (!_driveUploadEnabled.value && !drivePrefs.isAuthorized()) {
             screenModelScope.launch {
                 snackbarHostState.showSnackbar(
                     context.stringResource(MR.strings.drive_account_not_configured),

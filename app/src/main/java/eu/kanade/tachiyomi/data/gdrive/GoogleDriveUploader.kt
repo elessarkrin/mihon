@@ -1,13 +1,11 @@
 package eu.kanade.tachiyomi.data.gdrive
 
 import android.content.Context
-import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
-import com.google.api.client.googleapis.extensions.android.gms.auth.UserRecoverableAuthIOException
 import com.google.api.client.http.FileContent
+import com.google.api.client.http.HttpRequestInitializer
 import com.google.api.client.http.javanet.NetHttpTransport
 import com.google.api.client.json.gson.GsonFactory
 import com.google.api.services.drive.Drive
-import com.google.api.services.drive.DriveScopes
 import com.hippo.unifile.UniFile
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
@@ -20,14 +18,20 @@ class GoogleDriveUploader(private val context: Context) {
 
     private val drivePrefs = GoogleDrivePreferences(context)
 
-    private fun buildService(accountName: String): Drive {
-        val credential = GoogleAccountCredential
-            .usingOAuth2(context, listOf(DriveScopes.DRIVE_FILE))
-            .setSelectedAccountName(accountName)
+    private suspend fun buildService(): Drive? {
+        val accessToken = DriveOAuth(context).getValidAccessToken() ?: run {
+            logcat(LogPriority.WARN) {
+                "Drive upload skipped: no valid access token. " +
+                    "Authorize in Settings → Data & Storage → Google Drive."
+            }
+            return null
+        }
         return Drive.Builder(
             NetHttpTransport(),
             GsonFactory.getDefaultInstance(),
-            credential,
+            HttpRequestInitializer { request ->
+                request.headers.authorization = "Bearer $accessToken"
+            },
         )
             .setApplicationName("Mihon")
             .build()
@@ -41,10 +45,6 @@ class GoogleDriveUploader(private val context: Context) {
      */
     suspend fun upload(file: UniFile, mangaTitle: String, chapterNumber: Double) {
         try {
-            val accountName = drivePrefs.getAccountName() ?: run {
-                logcat(LogPriority.WARN) { "Drive upload skipped: no account configured" }
-                return
-            }
             val filePath = file.filePath ?: run {
                 logcat(LogPriority.WARN) { "Drive upload skipped: could not resolve file path" }
                 return
@@ -56,12 +56,11 @@ class GoogleDriveUploader(private val context: Context) {
             }
 
             val driveFileName = buildDriveFileName(mangaTitle, chapterNumber)
-            val service = buildService(accountName)
+            val service = buildService() ?: return
 
             val rootFolderId = getOrCreateFolder(service, sanitize(drivePrefs.getRootFolder()), "root")
             val mangaFolderId = getOrCreateFolder(service, sanitize(mangaTitle), rootFolderId)
 
-            // Idempotency: skip if Drive already has a file with this exact name in the manga folder
             val existing = service.files().list()
                 .setQ("name='$driveFileName' and '$mangaFolderId' in parents and trashed=false")
                 .setFields("files(id)")
@@ -71,7 +70,6 @@ class GoogleDriveUploader(private val context: Context) {
                 return
             }
 
-            // Chapters saved without CBZ setting are image directories — zip them on-the-fly.
             val uploadFile: File
             val tempCbz: File?
             if (localFile.isDirectory) {
@@ -95,11 +93,6 @@ class GoogleDriveUploader(private val context: Context) {
                 logcat { "Drive upload success: $driveFileName" }
             } finally {
                 tempCbz?.delete()
-            }
-        } catch (e: UserRecoverableAuthIOException) {
-            logcat(LogPriority.WARN) {
-                "Drive upload skipped: OAuth2 authorization required. " +
-                    "Go to Settings → Data & Storage → Google Drive and re-connect the account."
             }
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Drive upload failed for $mangaTitle ch.$chapterNumber" }
