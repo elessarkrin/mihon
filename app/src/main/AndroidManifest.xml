@@ -183,22 +183,6 @@
             </intent-filter>
         </activity>
 
-        <activity
-            android:name=".ui.setting.drive.DriveOAuthCallbackActivity"
-            android:exported="true"
-            android:launchMode="singleTop"
-            android:theme="@style/Theme.Tachiyomi">
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-
-                <data android:scheme="mihon" />
-                <data android:host="drive-auth" />
-            </intent-filter>
-        </activity>
-
         <receiver
             android:name=".data.notification.NotificationReceiver"
             android:exported="false" />

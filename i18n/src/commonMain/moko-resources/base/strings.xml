@@ -1067,7 +1067,7 @@
     <string name="drive_account_not_configured">Authorize Google Drive in Settings → Data &amp; Storage first</string>
     <string name="drive_group_title">Google Drive</string>
     <string name="drive_client_id_title">OAuth2 Client ID</string>
-    <string name="drive_client_id_subtitle">Enter the Client ID from your Google Cloud Console project (Web application type, redirect URI: mihon://drive-auth)</string>
+    <string name="drive_client_id_subtitle">Enter the Client ID from your Google Cloud Console project. Enable Drive API, create a Web application OAuth2 credential, and add http://127.0.0.1 as an authorized redirect URI.</string>
     <string name="drive_authorize_button">Authorize with Google</string>
     <string name="drive_authorize_subtitle">Tap to open Google consent screen in browser</string>
     <string name="drive_authorized">Authorized — tap to re-authorize</string>

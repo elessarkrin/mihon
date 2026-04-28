@@ -3,7 +3,9 @@ package eu.kanade.tachiyomi.data.gdrive
 import android.content.Context
 import android.net.Uri
 import androidx.browser.customtabs.CustomTabsIntent
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import logcat.LogPriority
 import okhttp3.FormBody
@@ -11,6 +13,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
 import tachiyomi.core.common.util.system.logcat
+import java.net.ServerSocket
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Base64
@@ -20,23 +23,31 @@ class DriveOAuth(private val context: Context) {
     private val prefs = GoogleDrivePreferences(context)
 
     companion object {
-        const val REDIRECT_URI = "mihon://drive-auth"
         private const val AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
         private const val TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
         const val DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file"
+        private const val CODE_TIMEOUT_MS = 300_000 // 5 minutes
     }
 
+    /**
+     * Starts the browser-based PKCE OAuth2 flow using a loopback HTTP server.
+     * GCP "Web application" type with authorized redirect URI `http://127.0.0.1` accepts
+     * any loopback port, so no port needs to be registered in Cloud Console.
+     */
     fun launchAuthFlow() {
         val clientId = prefs.getClientId()?.takeIf { it.isNotBlank() } ?: return
         val verifier = generateCodeVerifier()
         prefs.setCodeVerifier(verifier)
+
+        val port = findFreePort()
+        val redirectUri = "http://127.0.0.1:$port"
 
         val uri = Uri.Builder()
             .scheme("https")
             .authority("accounts.google.com")
             .path("/o/oauth2/v2/auth")
             .appendQueryParameter("client_id", clientId)
-            .appendQueryParameter("redirect_uri", REDIRECT_URI)
+            .appendQueryParameter("redirect_uri", redirectUri)
             .appendQueryParameter("response_type", "code")
             .appendQueryParameter("scope", DRIVE_SCOPE)
             .appendQueryParameter("code_challenge", generateCodeChallenge(verifier))
@@ -45,10 +56,41 @@ class DriveOAuth(private val context: Context) {
             .appendQueryParameter("prompt", "consent")
             .build()
 
+        CoroutineScope(Dispatchers.IO).launch {
+            val code = listenForCode(port)
+            if (code != null) exchangeCode(code, redirectUri)
+        }
+
         CustomTabsIntent.Builder().build().launchUrl(context, uri)
     }
 
-    suspend fun exchangeCode(code: String) {
+    private fun findFreePort(): Int = ServerSocket(0).use { it.localPort }
+
+    private suspend fun listenForCode(port: Int): String? = withContext(Dispatchers.IO) {
+        try {
+            ServerSocket(port).use { serverSocket ->
+                serverSocket.soTimeout = CODE_TIMEOUT_MS
+                serverSocket.accept().use { socket ->
+                    val request = socket.getInputStream().bufferedReader().readLine()
+                        ?: return@withContext null
+                    val responseHtml =
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n" +
+                            "Connection: close\r\n\r\n" +
+                            "<html><body style='font-family:sans-serif;text-align:center;margin-top:50px'>" +
+                            "<h2>Authorization complete</h2>" +
+                            "<p>You can close this tab and return to Mihon.</p>" +
+                            "</body></html>"
+                    socket.getOutputStream().write(responseHtml.toByteArray())
+                    Regex("code=([^& ]+)").find(request)?.groupValues?.get(1)
+                }
+            }
+        } catch (e: Exception) {
+            logcat(LogPriority.WARN, e) { "Drive OAuth loopback listener failed" }
+            null
+        }
+    }
+
+    suspend fun exchangeCode(code: String, redirectUri: String) {
         val clientId = prefs.getClientId() ?: return
         val verifier = prefs.getCodeVerifier() ?: return
         prefs.clearCodeVerifier()
@@ -56,7 +98,7 @@ class DriveOAuth(private val context: Context) {
         val body = FormBody.Builder()
             .add("client_id", clientId)
             .add("code", code)
-            .add("redirect_uri", REDIRECT_URI)
+            .add("redirect_uri", redirectUri)
             .add("grant_type", "authorization_code")
             .add("code_verifier", verifier)
             .build()
@@ -72,6 +114,8 @@ class DriveOAuth(private val context: Context) {
                         json.optString("refresh_token").takeIf { it.isNotBlank() }
                             ?.let { prefs.setRefreshToken(it) }
                         prefs.setTokenExpiryMs(System.currentTimeMillis() + json.getLong("expires_in") * 1000L)
+                    } else {
+                        logcat(LogPriority.ERROR) { "Drive token exchange failed: ${response.code}" }
                     }
                 }
             } catch (e: Exception) {
