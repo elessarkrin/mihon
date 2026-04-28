@@ -39,10 +39,23 @@ android {
     }
 
     buildTypes {
+        val releaseKeystore = System.getenv("KEYSTORE_PATH")?.let { file(it) }?.takeIf { it.exists() }
+        if (releaseKeystore != null) {
+            signingConfigs {
+                create("release") {
+                    storeFile = releaseKeystore
+                    storePassword = System.getenv("KEYSTORE_PASSWORD")
+                    keyAlias = System.getenv("KEY_ALIAS")
+                    keyPassword = System.getenv("KEY_PASSWORD")
+                }
+            }
+        }
+
         val debug by getting {
             applicationIdSuffix = ".dev"
             versionNameSuffix = "-${getLatestCommitCount()}"
             isPseudoLocalesEnabled = true
+            if (releaseKeystore != null) signingConfig = signingConfigs.getByName("release")
         }
         val release by getting {
             isMinifyEnabled = Config.enableCodeShrink
@@ -292,8 +305,11 @@ dependencies {
 
     testImplementation(libs.kotlinx.coroutines.test)
 
-    // Google Drive integration (browser-based OAuth2 PKCE, no SHA-1 registration needed)
-    implementation("androidx.browser:browser:1.8.0")
+    // Google Drive integration
+    implementation("com.google.android.gms:play-services-auth:21.2.0")
+    implementation("com.google.api-client:google-api-client-android:2.2.0") {
+        exclude(group = "org.apache.httpcomponents")
+    }
     implementation("com.google.apis:google-api-services-drive:v3-rev20240521-2.0.0") {
         exclude(group = "org.apache.httpcomponents")
     }

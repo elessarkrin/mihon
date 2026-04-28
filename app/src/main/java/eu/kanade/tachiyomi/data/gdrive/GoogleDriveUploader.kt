@@ -1,8 +1,8 @@
 package eu.kanade.tachiyomi.data.gdrive
 
 import android.content.Context
+import com.google.api.client.googleapis.extensions.android.gms.auth.UserRecoverableAuthIOException
 import com.google.api.client.http.FileContent
-import com.google.api.client.http.HttpRequestInitializer
 import com.google.api.client.http.javanet.NetHttpTransport
 import com.google.api.client.json.gson.GsonFactory
 import com.google.api.services.drive.Drive
@@ -18,21 +18,15 @@ class GoogleDriveUploader(private val context: Context) {
 
     private val drivePrefs = GoogleDrivePreferences(context)
 
-    private suspend fun buildService(): Drive? {
-        val accessToken = DriveOAuth(context).getValidAccessToken() ?: run {
+    private fun buildService(): Drive? {
+        val credential = DriveOAuth(context).buildCredential() ?: run {
             logcat(LogPriority.WARN) {
-                "Drive upload skipped: no valid access token. " +
-                    "Authorize in Settings → Data & Storage → Google Drive."
+                "Drive upload skipped: no account configured. " +
+                    "Connect one in Settings → Data & Storage → Google Drive."
             }
             return null
         }
-        return Drive.Builder(
-            NetHttpTransport(),
-            GsonFactory.getDefaultInstance(),
-            HttpRequestInitializer { request ->
-                request.headers.authorization = "Bearer $accessToken"
-            },
-        )
+        return Drive.Builder(NetHttpTransport(), GsonFactory.getDefaultInstance(), credential)
             .setApplicationName("Mihon")
             .build()
     }
@@ -94,12 +88,16 @@ class GoogleDriveUploader(private val context: Context) {
             } finally {
                 tempCbz?.delete()
             }
+        } catch (e: UserRecoverableAuthIOException) {
+            logcat(LogPriority.WARN) {
+                "Drive upload skipped: authorization required. " +
+                    "Re-connect your account in Settings → Data & Storage → Google Drive."
+            }
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Drive upload failed for $mangaTitle ch.$chapterNumber" }
         }
     }
 
-    /** Zips all files inside [sourceDir] into a CBZ archive at [destFile]. */
     private fun packDirectoryAsCbz(sourceDir: File, destFile: File) {
         ZipOutputStream(destFile.outputStream().buffered()).use { zos ->
             sourceDir.listFiles()
@@ -113,7 +111,6 @@ class GoogleDriveUploader(private val context: Context) {
         }
     }
 
-    /** Returns the Drive folder ID, creating it if it does not exist. */
     private fun getOrCreateFolder(service: Drive, name: String, parentId: String): String {
         val q = "name='$name' and '$parentId' in parents and " +
             "mimeType='application/vnd.google-apps.folder' and trashed=false"
@@ -128,7 +125,6 @@ class GoogleDriveUploader(private val context: Context) {
         return service.files().create(metadata).setFields("id").execute().id
     }
 
-    /** Builds `{sanitized_mangaTitle}_{chapterNumber}.cbz`. */
     private fun buildDriveFileName(mangaTitle: String, chapterNumber: Double): String {
         val numStr = if (chapterNumber == chapterNumber.toLong().toDouble()) {
             chapterNumber.toLong().toString()
