@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.data.gdrive
 import android.content.Context
 import com.google.api.client.googleapis.extensions.android.gms.auth.UserRecoverableAuthIOException
 import com.google.api.client.http.FileContent
+import com.google.api.client.http.InputStreamContent
 import com.google.api.client.http.javanet.NetHttpTransport
 import com.google.api.client.json.gson.GsonFactory
 import com.google.api.services.drive.Drive
@@ -39,20 +40,15 @@ class GoogleDriveUploader(private val context: Context) {
      */
     suspend fun upload(file: UniFile, mangaTitle: String, chapterNumber: Double) {
         try {
-            val filePath = file.filePath ?: run {
-                logcat(LogPriority.WARN) { "Drive upload skipped: could not resolve file path" }
-                return
-            }
-            val localFile = File(filePath)
-            if (!localFile.exists()) {
-                logcat(LogPriority.WARN) { "Drive upload skipped: local file does not exist at $filePath" }
+            if (!file.exists()) {
+                logcat(LogPriority.WARN) { "Drive upload skipped: file does not exist" }
                 return
             }
 
             val driveFileName = buildDriveFileName(mangaTitle, chapterNumber)
             val service = buildService() ?: return
 
-            val rootFolderId = getOrCreateFolder(service, sanitize(drivePrefs.getRootFolder()), "root")
+            val rootFolderId = getOrEnsureRootFolder(service)
             val mangaFolderId = getOrCreateFolder(service, sanitize(mangaTitle), rootFolderId)
 
             val existing = service.files().list()
@@ -64,30 +60,39 @@ class GoogleDriveUploader(private val context: Context) {
                 return
             }
 
-            val uploadFile: File
-            val tempCbz: File?
-            if (localFile.isDirectory) {
-                tempCbz = File(context.cacheDir, driveFileName)
-                packDirectoryAsCbz(localFile, tempCbz)
-                uploadFile = tempCbz
-            } else {
-                uploadFile = localFile
-                tempCbz = null
+            val metadata = DriveFile().apply {
+                name = driveFileName
+                parents = listOf(mangaFolderId)
             }
 
-            try {
-                val metadata = DriveFile().apply {
-                    name = driveFileName
-                    parents = listOf(mangaFolderId)
+            if (file.isDirectory) {
+                // Pack image directory into a temp CBZ in app cache (always accessible)
+                val tempCbz = File(context.cacheDir, driveFileName)
+                try {
+                    packDirectoryAsCbz(file, tempCbz)
+                    service.files()
+                        .create(metadata, FileContent("application/x-cbz", tempCbz))
+                        .setFields("id,name")
+                        .execute()
+                } finally {
+                    tempCbz.delete()
                 }
-                service.files()
-                    .create(metadata, FileContent("application/x-cbz", uploadFile))
-                    .setFields("id,name")
-                    .execute()
-                logcat { "Drive upload success: $driveFileName" }
-            } finally {
-                tempCbz?.delete()
+            } else {
+                // Stream CBZ via UniFile to avoid scoped-storage EACCES on raw file paths
+                val stream = file.openInputStream() ?: run {
+                    logcat(LogPriority.WARN) { "Drive upload skipped: could not open input stream" }
+                    return
+                }
+                stream.use { inputStream ->
+                    val content = InputStreamContent("application/x-cbz", inputStream.buffered())
+                        .apply { length = file.length() }
+                    service.files()
+                        .create(metadata, content)
+                        .setFields("id,name")
+                        .execute()
+                }
             }
+            logcat { "Drive upload success: $driveFileName" }
         } catch (e: UserRecoverableAuthIOException) {
             logcat(LogPriority.WARN) {
                 "Drive upload skipped: authorization required. " +
@@ -98,14 +103,30 @@ class GoogleDriveUploader(private val context: Context) {
         }
     }
 
-    private fun packDirectoryAsCbz(sourceDir: File, destFile: File) {
+    /**
+     * Returns the cached root folder ID. On first call, creates the folder in Drive and caches
+     * the ID so subsequent calls never query by name (which would fail under DRIVE_FILE scope
+     * for pre-existing folders).
+     */
+    private fun getOrEnsureRootFolder(service: Drive): String {
+        drivePrefs.getRootFolderId()?.let { return it }
+        val metadata = DriveFile().apply {
+            name = sanitize(drivePrefs.getRootFolder())
+            mimeType = "application/vnd.google-apps.folder"
+        }
+        val id = service.files().create(metadata).setFields("id").execute().id
+        drivePrefs.setRootFolderId(id)
+        return id
+    }
+
+    private fun packDirectoryAsCbz(sourceDir: UniFile, destFile: File) {
         ZipOutputStream(destFile.outputStream().buffered()).use { zos ->
             sourceDir.listFiles()
                 ?.filter { it.isFile }
                 ?.sortedBy { it.name }
                 ?.forEach { imageFile ->
-                    zos.putNextEntry(ZipEntry(imageFile.name))
-                    imageFile.inputStream().use { it.copyTo(zos) }
+                    zos.putNextEntry(ZipEntry(imageFile.name ?: return@forEach))
+                    imageFile.openInputStream()?.use { it.copyTo(zos) }
                     zos.closeEntry()
                 }
         }
