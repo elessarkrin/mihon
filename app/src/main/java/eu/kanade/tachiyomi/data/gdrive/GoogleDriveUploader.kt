@@ -147,10 +147,11 @@ class GoogleDriveUploader(private val context: Context) {
     }
 
     private fun buildDriveFileName(mangaTitle: String, chapterNumber: Double): String {
-        val numStr = if (chapterNumber == chapterNumber.toLong().toDouble()) {
-            chapterNumber.toLong().toString()
+        val intPart = chapterNumber.toLong()
+        val numStr = if (chapterNumber == intPart.toDouble()) {
+            "%04d".format(intPart)
         } else {
-            chapterNumber.toString()
+            "%04d".format(intPart) + ".${chapterNumber.toString().substringAfter('.')}"
         }
         return "${sanitize(mangaTitle)}_$numStr.cbz"
     }
