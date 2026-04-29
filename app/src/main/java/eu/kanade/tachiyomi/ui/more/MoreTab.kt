@@ -21,8 +21,11 @@ import eu.kanade.presentation.more.MoreScreen
 import eu.kanade.presentation.util.Tab
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.download.DownloadManager
+import eu.kanade.tachiyomi.data.gdrive.DriveUploadJob
+import eu.kanade.tachiyomi.data.gdrive.DriveUploadQueue
 import eu.kanade.tachiyomi.ui.category.CategoryScreen
 import eu.kanade.tachiyomi.ui.download.DownloadQueueScreen
+import eu.kanade.tachiyomi.ui.gdrive.DriveUploadQueueScreen
 import eu.kanade.tachiyomi.ui.setting.SettingsScreen
 import eu.kanade.tachiyomi.ui.stats.StatsScreen
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -60,13 +63,16 @@ data object MoreTab : Tab {
         val navigator = LocalNavigator.currentOrThrow
         val screenModel = rememberScreenModel { MoreScreenModel() }
         val downloadQueueState by screenModel.downloadQueueState.collectAsState()
+        val uploadQueueState by screenModel.uploadQueueState.collectAsState()
         MoreScreen(
             downloadQueueStateProvider = { downloadQueueState },
+            uploadQueueStateProvider = { uploadQueueState },
             downloadedOnly = screenModel.downloadedOnly,
             onDownloadedOnlyChange = { screenModel.downloadedOnly = it },
             incognitoMode = screenModel.incognitoMode,
             onIncognitoModeChange = { screenModel.incognitoMode = it },
             onClickDownloadQueue = { navigator.push(DownloadQueueScreen) },
+            onClickUploadQueue = { navigator.push(DriveUploadQueueScreen) },
             onClickCategories = { navigator.push(CategoryScreen()) },
             onClickStats = { navigator.push(StatsScreen()) },
             onClickDataAndStorage = { navigator.push(SettingsScreen(SettingsScreen.Destination.DataAndStorage)) },
@@ -88,6 +94,9 @@ private class MoreScreenModel(
     private var _downloadQueueState: MutableStateFlow<DownloadQueueState> = MutableStateFlow(DownloadQueueState.Stopped)
     val downloadQueueState: StateFlow<DownloadQueueState> = _downloadQueueState.asStateFlow()
 
+    private val _uploadQueueState: MutableStateFlow<UploadQueueState> = MutableStateFlow(UploadQueueState.Idle)
+    val uploadQueueState: StateFlow<UploadQueueState> = _uploadQueueState.asStateFlow()
+
     init {
         // Handle running/paused status change and queue progress updating
         screenModelScope.launchIO {
@@ -104,6 +113,15 @@ private class MoreScreenModel(
                     }
                 }
         }
+        screenModelScope.launchIO {
+            DriveUploadQueue.jobs.collectLatest { jobs ->
+                val active = jobs.count {
+                    it.stateFlow.value == DriveUploadJob.State.QUEUED ||
+                        it.stateFlow.value == DriveUploadJob.State.UPLOADING
+                }
+                _uploadQueueState.value = if (active == 0) UploadQueueState.Idle else UploadQueueState.Active(active)
+            }
+        }
     }
 }
 
@@ -111,4 +129,9 @@ sealed interface DownloadQueueState {
     data object Stopped : DownloadQueueState
     data class Paused(val pending: Int) : DownloadQueueState
     data class Downloading(val pending: Int) : DownloadQueueState
+}
+
+sealed interface UploadQueueState {
+    data object Idle : UploadQueueState
+    data class Active(val pending: Int) : UploadQueueState
 }

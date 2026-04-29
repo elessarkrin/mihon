@@ -38,14 +38,19 @@ class GoogleDriveUploader(private val context: Context) {
      * All exceptions are caught — Drive errors never affect download state.
      */
     suspend fun upload(file: UniFile, mangaTitle: String, chapterNumber: Double, author: String? = null) {
+        val driveFileName = buildDriveFileName(mangaTitle, chapterNumber)
+        val job = DriveUploadQueue.enqueue(mangaTitle, driveFileName)
         try {
             if (!file.exists()) {
                 logcat(LogPriority.WARN) { "Drive upload skipped: file does not exist" }
+                job.stateFlow.value = DriveUploadJob.State.ERROR
                 return
             }
 
-            val driveFileName = buildDriveFileName(mangaTitle, chapterNumber)
-            val service = buildService() ?: return
+            val service = buildService() ?: run {
+                job.stateFlow.value = DriveUploadJob.State.ERROR
+                return
+            }
 
             val rootFolderId = getOrEnsureRootFolder(service)
             val mangaFolderId = getOrCreateFolder(service, sanitize(mangaTitle), rootFolderId)
@@ -64,6 +69,8 @@ class GoogleDriveUploader(private val context: Context) {
                 parents = listOf(mangaFolderId)
             }
 
+            job.stateFlow.value = DriveUploadJob.State.UPLOADING
+
             val comicInfo = buildComicInfoXml(mangaTitle, chapterNumber, author)
             val tempCbz = File(context.cacheDir, driveFileName)
             try {
@@ -72,20 +79,27 @@ class GoogleDriveUploader(private val context: Context) {
                 } else {
                     repackCbzWithMetadata(file, tempCbz, comicInfo)
                 }
-                service.files()
+                val request = service.files()
                     .create(driveMetadata, FileContent("application/x-cbz", tempCbz))
                     .setFields("id,name")
-                    .execute()
+                request.mediaHttpUploader.setProgressListener { uploader ->
+                    job.progressFlow.value = (uploader.progress * 100).toInt()
+                }
+                request.execute()
             } finally {
                 tempCbz.delete()
             }
+            job.progressFlow.value = 100
+            job.stateFlow.value = DriveUploadJob.State.DONE
             logcat { "Drive upload success: $driveFileName" }
         } catch (e: UserRecoverableAuthIOException) {
+            job.stateFlow.value = DriveUploadJob.State.ERROR
             logcat(LogPriority.WARN) {
                 "Drive upload skipped: authorization required. " +
                     "Re-connect your account in Settings → Data & Storage → Google Drive."
             }
         } catch (e: Exception) {
+            job.stateFlow.value = DriveUploadJob.State.ERROR
             logcat(LogPriority.ERROR, e) { "Drive upload failed for $mangaTitle ch.$chapterNumber" }
         }
     }

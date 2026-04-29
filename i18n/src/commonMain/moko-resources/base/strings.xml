@@ -1062,6 +1062,10 @@
     <string name="donationCampaign.dismiss">Dismiss</string>
 
     <!-- Google Drive integration -->
+    <string name="label_drive_upload_queue">Drive Upload Queue</string>
+    <string name="action_clear_finished_uploads">Clear finished</string>
+    <string name="information_no_uploads">No uploads yet</string>
+    <string name="drive_upload_queue_uploading">%1$d uploading</string>
     <string name="action_drive_upload_on">Drive: On</string>
     <string name="action_drive_upload_off">Drive: Off</string>
     <string name="drive_account_not_configured">Connect a Google account in Settings → Data &amp; Storage first</string>

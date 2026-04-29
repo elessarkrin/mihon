@@ -6,6 +6,7 @@ import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.automirrored.outlined.Label
 import androidx.compose.material.icons.filled.VolunteerActivism
 import androidx.compose.material.icons.outlined.CloudOff
+import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.GetApp
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.QueryStats
@@ -21,6 +22,7 @@ import eu.kanade.presentation.more.settings.widget.SwitchPreferenceWidget
 import eu.kanade.presentation.more.settings.widget.TextPreferenceWidget
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.ui.more.DownloadQueueState
+import eu.kanade.tachiyomi.ui.more.UploadQueueState
 import tachiyomi.core.common.Constants
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.ScrollbarLazyColumn
@@ -36,6 +38,8 @@ fun MoreScreen(
     incognitoMode: Boolean,
     onIncognitoModeChange: (Boolean) -> Unit,
     onClickDownloadQueue: () -> Unit,
+    uploadQueueStateProvider: () -> UploadQueueState,
+    onClickUploadQueue: () -> Unit,
     onClickCategories: () -> Unit,
     onClickStats: () -> Unit,
     onClickDataAndStorage: () -> Unit,
@@ -100,6 +104,21 @@ fun MoreScreen(
                     },
                     icon = Icons.Outlined.GetApp,
                     onPreferenceClick = onClickDownloadQueue,
+                )
+            }
+            item {
+                val uploadQueueState = uploadQueueStateProvider()
+                TextPreferenceWidget(
+                    title = stringResource(MR.strings.label_drive_upload_queue),
+                    subtitle = when (uploadQueueState) {
+                        UploadQueueState.Idle -> null
+                        is UploadQueueState.Active -> stringResource(
+                            MR.strings.drive_upload_queue_uploading,
+                            uploadQueueState.pending,
+                        )
+                    },
+                    icon = Icons.Outlined.CloudUpload,
+                    onPreferenceClick = onClickUploadQueue,
                 )
             }
             item {
