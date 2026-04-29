@@ -123,22 +123,26 @@ class GoogleDriveUploader(private val context: Context) {
     }
 
     private fun repackCbzWithMetadata(source: UniFile, destFile: File, comicInfo: String) {
-        val inputStream = source.openInputStream() ?: return
-        java.util.zip.ZipInputStream(inputStream.buffered()).use { zis ->
-            ZipOutputStream(destFile.outputStream().buffered()).use { zos ->
-                zos.putNextEntry(ZipEntry("ComicInfo.xml"))
-                zos.write(comicInfo.toByteArray(Charsets.UTF_8))
-                zos.closeEntry()
-                var entry = zis.nextEntry
-                while (entry != null) {
-                    if (entry.name != "ComicInfo.xml") {
+        // Copy source to cache first — ZipInputStream over a content URI is unreliable on
+        // newer Android; ZipFile needs a real File path and has proper random access.
+        val sourceCopy = File(context.cacheDir, "src_${destFile.name}")
+        try {
+            source.openInputStream()?.use { it.copyTo(sourceCopy.outputStream()) } ?: return
+            java.util.zip.ZipFile(sourceCopy).use { zf ->
+                ZipOutputStream(destFile.outputStream().buffered()).use { zos ->
+                    zos.putNextEntry(ZipEntry("ComicInfo.xml"))
+                    zos.write(comicInfo.toByteArray(Charsets.UTF_8))
+                    zos.closeEntry()
+                    for (entry in zf.entries()) {
+                        if (entry.name == "ComicInfo.xml") continue
                         zos.putNextEntry(ZipEntry(entry.name))
-                        zis.copyTo(zos)
+                        zf.getInputStream(entry).use { it.copyTo(zos) }
                         zos.closeEntry()
                     }
-                    entry = zis.nextEntry
                 }
             }
+        } finally {
+            sourceCopy.delete()
         }
     }
 
