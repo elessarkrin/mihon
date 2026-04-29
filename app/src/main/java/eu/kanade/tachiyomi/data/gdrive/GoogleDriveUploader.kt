@@ -3,7 +3,6 @@ package eu.kanade.tachiyomi.data.gdrive
 import android.content.Context
 import com.google.api.client.googleapis.extensions.android.gms.auth.UserRecoverableAuthIOException
 import com.google.api.client.http.FileContent
-import com.google.api.client.http.InputStreamContent
 import com.google.api.client.http.javanet.NetHttpTransport
 import com.google.api.client.json.gson.GsonFactory
 import com.google.api.services.drive.Drive
@@ -38,7 +37,7 @@ class GoogleDriveUploader(private val context: Context) {
      * Skips silently if the file already exists (idempotent).
      * All exceptions are caught — Drive errors never affect download state.
      */
-    suspend fun upload(file: UniFile, mangaTitle: String, chapterNumber: Double) {
+    suspend fun upload(file: UniFile, mangaTitle: String, chapterNumber: Double, author: String? = null) {
         try {
             if (!file.exists()) {
                 logcat(LogPriority.WARN) { "Drive upload skipped: file does not exist" }
@@ -60,37 +59,25 @@ class GoogleDriveUploader(private val context: Context) {
                 return
             }
 
-            val metadata = DriveFile().apply {
+            val driveMetadata = DriveFile().apply {
                 name = driveFileName
                 parents = listOf(mangaFolderId)
             }
 
-            if (file.isDirectory) {
-                // Pack image directory into a temp CBZ in app cache (always accessible)
-                val tempCbz = File(context.cacheDir, driveFileName)
-                try {
-                    packDirectoryAsCbz(file, tempCbz)
-                    service.files()
-                        .create(metadata, FileContent("application/x-cbz", tempCbz))
-                        .setFields("id,name")
-                        .execute()
-                } finally {
-                    tempCbz.delete()
+            val comicInfo = buildComicInfoXml(mangaTitle, chapterNumber, author)
+            val tempCbz = File(context.cacheDir, driveFileName)
+            try {
+                if (file.isDirectory) {
+                    packDirectoryAsCbz(file, tempCbz, comicInfo)
+                } else {
+                    repackCbzWithMetadata(file, tempCbz, comicInfo)
                 }
-            } else {
-                // Stream CBZ via UniFile to avoid scoped-storage EACCES on raw file paths
-                val stream = file.openInputStream() ?: run {
-                    logcat(LogPriority.WARN) { "Drive upload skipped: could not open input stream" }
-                    return
-                }
-                stream.use { inputStream ->
-                    val content = InputStreamContent("application/x-cbz", inputStream.buffered())
-                        .apply { length = file.length() }
-                    service.files()
-                        .create(metadata, content)
-                        .setFields("id,name")
-                        .execute()
-                }
+                service.files()
+                    .create(driveMetadata, FileContent("application/x-cbz", tempCbz))
+                    .setFields("id,name")
+                    .execute()
+            } finally {
+                tempCbz.delete()
             }
             logcat { "Drive upload success: $driveFileName" }
         } catch (e: UserRecoverableAuthIOException) {
@@ -119,8 +106,11 @@ class GoogleDriveUploader(private val context: Context) {
         return id
     }
 
-    private fun packDirectoryAsCbz(sourceDir: UniFile, destFile: File) {
+    private fun packDirectoryAsCbz(sourceDir: UniFile, destFile: File, comicInfo: String) {
         ZipOutputStream(destFile.outputStream().buffered()).use { zos ->
+            zos.putNextEntry(ZipEntry("ComicInfo.xml"))
+            zos.write(comicInfo.toByteArray(Charsets.UTF_8))
+            zos.closeEntry()
             sourceDir.listFiles()
                 ?.filter { it.isFile }
                 ?.sortedBy { it.name }
@@ -131,6 +121,48 @@ class GoogleDriveUploader(private val context: Context) {
                 }
         }
     }
+
+    private fun repackCbzWithMetadata(source: UniFile, destFile: File, comicInfo: String) {
+        val inputStream = source.openInputStream() ?: return
+        java.util.zip.ZipInputStream(inputStream.buffered()).use { zis ->
+            ZipOutputStream(destFile.outputStream().buffered()).use { zos ->
+                zos.putNextEntry(ZipEntry("ComicInfo.xml"))
+                zos.write(comicInfo.toByteArray(Charsets.UTF_8))
+                zos.closeEntry()
+                var entry = zis.nextEntry
+                while (entry != null) {
+                    if (entry.name != "ComicInfo.xml") {
+                        zos.putNextEntry(ZipEntry(entry.name))
+                        zis.copyTo(zos)
+                        zos.closeEntry()
+                    }
+                    entry = zis.nextEntry
+                }
+            }
+        }
+    }
+
+    private fun buildComicInfoXml(mangaTitle: String, chapterNumber: Double, author: String?): String {
+        val intPart = chapterNumber.toLong()
+        val numStr = if (chapterNumber == intPart.toDouble()) {
+            "%04d".format(intPart)
+        } else {
+            "%04d".format(intPart) + ".${chapterNumber.toString().substringAfter('.')}"
+        }
+        val writerTag = if (!author.isNullOrBlank()) "\n  <Writer>${author.escapeXml()}</Writer>" else ""
+        return """<?xml version="1.0" encoding="utf-8"?>
+<ComicInfo xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <Series>${mangaTitle.escapeXml()}</Series>
+  <Number>$numStr</Number>
+  <Manga>YesAndRightToLeft</Manga>$writerTag
+</ComicInfo>"""
+    }
+
+    private fun String.escapeXml(): String = this
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\"", "&quot;")
 
     private fun getOrCreateFolder(service: Drive, name: String, parentId: String): String {
         val q = "name='$name' and '$parentId' in parents and " +

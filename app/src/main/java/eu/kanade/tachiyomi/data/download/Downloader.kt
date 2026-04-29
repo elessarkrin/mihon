@@ -281,6 +281,7 @@ class Downloader(
             file = chapterFile,
             mangaTitle = download.manga.title,
             chapterNumber = download.chapter.chapterNumber,
+            author = download.manga.author,
         )
     }
 
