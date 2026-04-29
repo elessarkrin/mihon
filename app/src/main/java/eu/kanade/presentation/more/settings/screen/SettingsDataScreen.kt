@@ -409,8 +409,11 @@ object SettingsDataScreen : SearchableSettings {
         val drivePrefs = remember { GoogleDrivePreferences(context) }
         var accountName by remember { mutableStateOf(drivePrefs.getAccountName()) }
         var rootFolder by remember { mutableStateOf(drivePrefs.getRootFolder()) }
+        var manualFolderId by remember { mutableStateOf(drivePrefs.getManualFolderId()) }
         var showFolderDialog by remember { mutableStateOf(false) }
+        var showFolderIdDialog by remember { mutableStateOf(false) }
         var folderInput by remember { mutableStateOf(rootFolder) }
+        var folderIdInput by remember { mutableStateOf(manualFolderId ?: "") }
 
         val oauthLauncher = rememberLauncherForActivityResult(
             contract = ActivityResultContracts.StartActivityForResult(),
@@ -429,7 +432,7 @@ object SettingsDataScreen : SearchableSettings {
                             GoogleAuthUtil.getToken(
                                 context,
                                 Account(name, "com.google"),
-                                "oauth2:${DriveScopes.DRIVE_FILE}",
+                                "oauth2:${DriveScopes.DRIVE}",
                             )
                         } catch (e: UserRecoverableAuthException) {
                             val intent = e.intent ?: return@launch
@@ -472,6 +475,43 @@ object SettingsDataScreen : SearchableSettings {
             )
         }
 
+        if (showFolderIdDialog) {
+            AlertDialog(
+                onDismissRequest = { showFolderIdDialog = false },
+                title = { Text(text = stringResource(MR.strings.drive_folder_id_title)) },
+                text = {
+                    OutlinedTextField(
+                        value = folderIdInput,
+                        onValueChange = { folderIdInput = it },
+                        singleLine = true,
+                        placeholder = { Text("e.g. 1BxiMVs0XRA5nFMdKvBdBZjg...") },
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            val trimmed = folderIdInput.trim()
+                            if (trimmed.isEmpty()) {
+                                drivePrefs.clearManualFolderId()
+                                manualFolderId = null
+                            } else {
+                                drivePrefs.setManualFolderId(trimmed)
+                                manualFolderId = trimmed
+                            }
+                            showFolderIdDialog = false
+                        },
+                    ) {
+                        Text(text = stringResource(MR.strings.action_save))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showFolderIdDialog = false }) {
+                        Text(text = stringResource(MR.strings.action_cancel))
+                    }
+                },
+            )
+        }
+
         return Preference.PreferenceGroup(
             title = stringResource(MR.strings.drive_group_title),
             preferenceItems = persistentListOf(
@@ -490,7 +530,7 @@ object SettingsDataScreen : SearchableSettings {
                         try {
                             val credential = GoogleAccountCredential.usingOAuth2(
                                 context,
-                                listOf(DriveScopes.DRIVE_FILE),
+                                listOf(DriveScopes.DRIVE),
                             )
                             accountPickerLauncher.launch(credential.newChooseAccountIntent())
                         } catch (e: Exception) {
@@ -504,6 +544,18 @@ object SettingsDataScreen : SearchableSettings {
                     onClick = {
                         folderInput = rootFolder
                         showFolderDialog = true
+                    },
+                ),
+                Preference.PreferenceItem.TextPreference(
+                    title = stringResource(MR.strings.drive_folder_id_title),
+                    subtitle = if (manualFolderId != null) {
+                        stringResource(MR.strings.drive_folder_id_subtitle_set, manualFolderId!!)
+                    } else {
+                        stringResource(MR.strings.drive_folder_id_subtitle_empty)
+                    },
+                    onClick = {
+                        folderIdInput = manualFolderId ?: ""
+                        showFolderIdDialog = true
                     },
                 ),
                 Preference.PreferenceItem.TextPreference(

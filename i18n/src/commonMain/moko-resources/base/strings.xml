@@ -1069,6 +1069,9 @@
     <string name="drive_connect_account">Connect Google account</string>
     <string name="drive_connect_account_subtitle">Tap to link a Google account for auto-upload</string>
     <string name="drive_account_connected">Account: %s</string>
-    <string name="drive_folder_title">Upload folder</string>
+    <string name="drive_folder_title">Upload folder name</string>
+    <string name="drive_folder_id_title">Use existing folder ID</string>
+    <string name="drive_folder_id_subtitle_empty">Paste the folder ID from the Drive URL to use an existing folder</string>
+    <string name="drive_folder_id_subtitle_set">ID: %s</string>
     <string name="drive_disconnect">Disconnect account</string>
 </resources>

@@ -18,7 +18,7 @@ class DriveOAuth(private val context: Context) {
     fun buildCredential(): GoogleAccountCredential? {
         val account = prefs.getAccountName() ?: return null
         return GoogleAccountCredential
-            .usingOAuth2(context, Collections.singletonList(DriveScopes.DRIVE_FILE))
+            .usingOAuth2(context, Collections.singletonList(DriveScopes.DRIVE))
             .setSelectedAccountName(account)
     }
 
@@ -30,7 +30,7 @@ class DriveOAuth(private val context: Context) {
                 GoogleAuthUtil.getToken(
                     context,
                     android.accounts.Account(account, "com.google"),
-                    "oauth2:${DriveScopes.DRIVE_FILE}",
+                    "oauth2:${DriveScopes.DRIVE}",
                 )
                 true
             } catch (_: UserRecoverableAuthException) {

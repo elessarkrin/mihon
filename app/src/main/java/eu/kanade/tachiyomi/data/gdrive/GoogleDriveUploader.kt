@@ -104,11 +104,11 @@ class GoogleDriveUploader(private val context: Context) {
     }
 
     /**
-     * Returns the cached root folder ID. On first call, creates the folder in Drive and caches
-     * the ID so subsequent calls never query by name (which would fail under DRIVE_FILE scope
-     * for pre-existing folders).
+     * Returns the root folder ID to upload into.
+     * Priority: user-specified folder ID → cached auto-created folder ID → create new folder.
      */
     private fun getOrEnsureRootFolder(service: Drive): String {
+        drivePrefs.getManualFolderId()?.let { return it }
         drivePrefs.getRootFolderId()?.let { return it }
         val metadata = DriveFile().apply {
             name = sanitize(drivePrefs.getRootFolder())

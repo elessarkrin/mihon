@@ -30,10 +30,20 @@ class GoogleDrivePreferences(context: Context) {
         }
     }
 
-    /** Cached Drive folder ID for the root upload folder. Avoids duplicate creation under DRIVE_FILE scope. */
+    /** Cached Drive folder ID for the root upload folder (auto-created by the app). */
     fun getRootFolderId(): String? = prefs.getString(KEY_ROOT_FOLDER_ID, null)
 
     fun setRootFolderId(id: String) = prefs.edit { putString(KEY_ROOT_FOLDER_ID, id) }
+
+    /**
+     * User-specified folder ID pasted from the Drive URL.
+     * When set, uploads go into this folder directly instead of creating one by name.
+     */
+    fun getManualFolderId(): String? = prefs.getString(KEY_MANUAL_FOLDER_ID, null)
+
+    fun setManualFolderId(id: String) = prefs.edit { putString(KEY_MANUAL_FOLDER_ID, id.trim()) }
+
+    fun clearManualFolderId() = prefs.edit { remove(KEY_MANUAL_FOLDER_ID) }
 
     fun isDriveEnabledForManga(mangaId: Long): Boolean =
         prefs.getBoolean(mangaKey(mangaId), false)
@@ -48,6 +58,7 @@ class GoogleDrivePreferences(context: Context) {
         private const val KEY_ACCOUNT_NAME = "account_name"
         private const val KEY_ROOT_FOLDER = "root_folder"
         private const val KEY_ROOT_FOLDER_ID = "root_folder_id"
+        private const val KEY_MANUAL_FOLDER_ID = "manual_folder_id"
         private const val DEFAULT_ROOT_FOLDER = "MihonBackup"
     }
 }
